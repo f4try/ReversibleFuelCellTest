@@ -1,0 +1,1 @@
+%~dp0/Debug/rsoc_test.exe
