@@ -775,7 +775,7 @@ int main(int, char**) {
       ImGui::Text("产氢率: %.3f NL/h", hydrogen.back());
     }
     ImGui::Text("FPS %.1f", ImGui::GetIO().Framerate);
-    ImGui::Checkbox("设置", &setting_window_status);
+    ImGui::Checkbox("样式", &setting_window_status);
     ImGui::PushStyleColor(ImGuiCol_PlotHistogram,
                           (ImVec4)ImColor::ImColor(26, 115, 232, 256));
     if (power.size() > 0) {
