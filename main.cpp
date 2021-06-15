@@ -16,7 +16,7 @@
 // Read comments in imgui_impl_vulkan.h.
 
 #pragma execution_character_set("utf-8")
-// #define RELEASE
+#define RELEASE
 #ifdef RELEASE
 #pragma comment(linker, "/subsystem:\"windows\" /entry:\"mainCRTStartup\"")
 #endif
