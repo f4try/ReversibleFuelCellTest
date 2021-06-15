@@ -488,7 +488,7 @@ int main(int, char**) {
       glfwCreateWindow(1280, 720, "可逆固体氧化物电池测试平台", NULL, NULL);
   GLFWimage images[1];
   images[0].pixels =
-      stbi_load("icon.ico", &images[0].width, &images[0].height, 0, 4);
+      stbi_load("icon.png", &images[0].width, &images[0].height, 0, 4);
   glfwSetWindowIcon(window, 1, images);
 
   glfwMaximizeWindow(window);
