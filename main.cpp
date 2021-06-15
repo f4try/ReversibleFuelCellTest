@@ -16,7 +16,7 @@
 // Read comments in imgui_impl_vulkan.h.
 
 #pragma execution_character_set("utf-8")
-// #define RELEASE
+#define RELEASE
 #ifdef RELEASE
 #pragma comment(linker, "/subsystem:\"windows\" /entry:\"mainCRTStartup\"")
 #endif
@@ -33,6 +33,9 @@
 #include "imgui_impl_vulkan.h"
 #include "implot.h"
 #include "seriallib.hpp"
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
+#include "visalib.hpp"
 #define GLFW_INCLUDE_NONE
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
@@ -405,7 +408,8 @@ static void glfw_error_callback(int error, const char* description) {
   fprintf(stderr, "Glfw Error %d: %s\n", error, description);
 }
 
-void sweep_ivp(seriallib* it8512, float set_current, int step, float step_time,
+void sweep_ivp(seriallib* it8512, visalib* psw, float set_current,
+               float set_voltage, float ocv, int step, float step_time,
                int mode, float* progress, std::vector<float>* time_ivp,
                std::vector<float>* voltage_ivp, std::vector<float>* current_ivp,
                std::vector<float>* power_ivp,
@@ -420,9 +424,15 @@ void sweep_ivp(seriallib* it8512, float set_current, int step, float step_time,
   time_t now = std::time(0);
   tm* ltm = localtime(&now);
   char filename[80];
-  sprintf(filename, "outputs\\ivp%d-%d-%d-%d-%d-%d.csv", ltm->tm_year + 1900,
-          ltm->tm_mon + 1, ltm->tm_mday, ltm->tm_hour, ltm->tm_min,
-          ltm->tm_sec);
+  if (mode == 0) {
+    sprintf(filename, "outputs\\ivp-fc-%d-%d-%d-%d-%d-%d.csv",
+            ltm->tm_year + 1900, ltm->tm_mon + 1, ltm->tm_mday, ltm->tm_hour,
+            ltm->tm_min, ltm->tm_sec);
+  } else {
+    sprintf(filename, "outputs\\ivp-ec-%d-%d-%d-%d-%d-%d.csv",
+            ltm->tm_year + 1900, ltm->tm_mon + 1, ltm->tm_mday, ltm->tm_hour,
+            ltm->tm_min, ltm->tm_sec);
+  }
   fp = fopen(filename, "a");
   fputs("time,voltage,current,power,hydrogen,mode\n", fp);
   // double start_time = ImGui::GetTime();
@@ -430,16 +440,29 @@ void sweep_ivp(seriallib* it8512, float set_current, int step, float step_time,
   double last_time = 0.0;
   float vcp[3];
   for (int i = 0; i < step + 1; i++) {
-    if (!it8512->setCurrent(set_current / step * i)) {
-      std::cout << "设置负载电流失败!" << std::endl;
+    if (mode == 0) {
+      if (!it8512->setCurrent(set_current / step * i)) {
+        std::cout << "设置负载电流失败!" << std::endl;
+      }
+    } else {
+      if (!psw->setVoltage((set_voltage - ocv) / step * i + ocv)) {
+        std::cout << "设置电源电压失败!" << std::endl;
+      }
     }
     // Sleep(step_time * 1000);
     std::this_thread::sleep_for(
         std::chrono::milliseconds(int(step_time * 1000)));
     last_time = step_time * i;
-    if (!it8512->readVCP(vcp)) {
-      std::cout << "读取电压、电流、功率失败!" << std::endl;
+    if (mode == 0) {
+      if (!it8512->readVCP(vcp)) {
+        std::cout << "读取电压、电流、功率失败!" << std::endl;
+      }
+    } else {
+      vcp[0] = psw->readVoltage();
+      vcp[1] = psw->readCurrent();
+      vcp[2] = vcp[1] * vcp[2];
     }
+
     // std::cout << last_time << ": " << *vcp << "," << *(vcp + 1) << ","
     //           << *(vcp + 2) << "," << std::endl;
     time_ivp->push_back(last_time);
@@ -463,7 +486,12 @@ int main(int, char**) {
   glfwWindowHint(GLFW_MAXIMIZED, GLFW_TRUE);
   GLFWwindow* window =
       glfwCreateWindow(1280, 720, "可逆固体氧化物电池测试平台", NULL, NULL);
+  GLFWimage images[1];
+  images[0].pixels =
+      stbi_load("icon.ico", &images[0].width, &images[0].height, 0, 4);
+  glfwSetWindowIcon(window, 1, images);
 
+  glfwMaximizeWindow(window);
   // Setup Vulkan
   if (!glfwVulkanSupported()) {
     printf("GLFW: Vulkan Not Supported\n");
@@ -584,7 +612,10 @@ int main(int, char**) {
   if (!it8512.loadOn()) {
     std::cout << "打开电子负载失败!" << std::endl;
   }
-
+  visalib psw("ASRL3::INSTR");
+  if (!psw.output(false)) {
+    std::cout << "关闭电源失败!" << std::endl;
+  }
   float vcp[3];
   double last_time = ImGui::GetTime();
 
@@ -630,9 +661,16 @@ int main(int, char**) {
   // Main loop
   while (!glfwWindowShouldClose(window)) {
     if (ImGui::GetTime() - last_time > 0.5) {
-      if (!it8512.readVCP(vcp)) {
-        std::cout << "读取电压、电流、功率失败!" << std::endl;
+      if (mode == 0) {
+        if (!it8512.readVCP(vcp)) {
+          std::cout << "读取电压、电流、功率失败!" << std::endl;
+        }
+      } else {
+        vcp[0] = psw.readVoltage();
+        vcp[1] = psw.readCurrent();
+        vcp[2] = vcp[0] * vcp[1];
       }
+
       last_time = ImGui::GetTime();
       // std::cout << last_time << ": " << *vcp << "," << *(vcp + 1) << ","
       //           << *(vcp + 2) << "," << std::endl;
@@ -715,11 +753,17 @@ int main(int, char**) {
       if (!it8512.loadOn()) {
         std::cout << "打开电子负载失败!" << std::endl;
       }
+      if (!psw.output(false)) {
+        std::cout << "关闭电源失败!" << std::endl;
+      }
     }
     ImGui::SameLine();
     if (ImGui::RadioButton("电解模式", &mode, 1)) {
       if (!it8512.loadOff()) {
         std::cout << "关闭电子负载失败!" << std::endl;
+      }
+      if (!psw.output(true)) {
+        std::cout << "打开电源失败!" << std::endl;
       }
     }
     if (voltage.size() > 0) {
@@ -750,7 +794,7 @@ int main(int, char**) {
     ImGui::End();
 
     if (setting_window_status) {
-      ImGui::Begin("设置", &setting_window_status);
+      ImGui::Begin("样式", &setting_window_status);
       ImGui::ShowStyleSelector("界面样式");
       ImPlot::ShowStyleSelector("绘图样式");
       ImPlot::ShowColormapSelector("图线颜色");
@@ -761,28 +805,31 @@ int main(int, char**) {
     static float ocv = 0.0f;
     static float set_voltage = 0.0f;
     static int step = 20;
-    static float step_time = 0.5;
+    static float step_time = 1.0;
 
     ImGui::Begin("测试参数");
     if (mode == 0) {
-      set_voltage = 0;
       ImGui::DragFloat("负载电流 (A)", &set_current, 0.5, 0.0, 10.0);
     } else {
-      set_current = 0;
-      ImGui::DragFloat("OCV (V)", &ocv, 0.5, 0.0, 35.0);
       ImGui::DragFloat("电源电压 (V)", &set_voltage, 0.5, 0.0, 10.0);
     }
     if (ImGui::Button("设置")) {
-      it8512.setCurrent(set_current);
+      if (mode == 0) {
+        it8512.setCurrent(set_current);
+      } else {
+        psw.setVoltage(set_voltage);
+      }
+    }
+    if (mode == 1) {
+      ImGui::DragFloat("OCV (V)", &ocv, 0.5, 0.0, 35.0);
     }
     ImGui::DragInt("扫描步数 ", &step, 10, 10, 50);
     ImGui::DragFloat("扫描步长 (s)", &step_time, 0.5, 0.5, 10.0);
     if (ImGui::Button("扫描") && ((progress > 0.999f) || (progress < 0.001f))) {
-      // sweep_ivp(&it8512, set_current, step, step_time, mode, &time_ivp,
-      //           &voltage_ivp, &current_ivp, &power_ivp, &hydrogen_ivp);
-      std::thread th_sweep(sweep_ivp, &it8512, set_current, step, step_time,
-                           mode, &progress, &time_ivp, &voltage_ivp,
-                           &current_ivp, &power_ivp, &hydrogen_ivp);
+      std::thread th_sweep(sweep_ivp, &it8512, &psw, set_current, set_voltage,
+                           ocv, step, step_time, mode, &progress, &time_ivp,
+                           &voltage_ivp, &current_ivp, &power_ivp,
+                           &hydrogen_ivp);
       th_sweep.detach();
     }
     // ImGui::PushStyleColor(ImGuiCol_FrameBg,
@@ -922,7 +969,7 @@ int main(int, char**) {
 
   CleanupVulkanWindow();
   CleanupVulkan();
-
+  stbi_image_free(images[0].pixels);
   glfwDestroyWindow(window);
   glfwTerminate();
 
