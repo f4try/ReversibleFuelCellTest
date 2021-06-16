@@ -467,7 +467,11 @@ void sweep_ivp(seriallib* it8512, visalib* psw, float set_current,
     voltage_ivp->push_back(*vcp);
     current_ivp->push_back(*(vcp + 1));
     power_ivp->push_back(*(vcp + 2));
-    hydrogen_ivp->push_back(*(vcp + 1) / 26.801 / 2.0 * 23.8 * 20.0);
+    if (mode == 1) {
+      hydrogen_ivp->push_back(*(vcp + 1) / 26.801 / 2.0 * 23.8 * 20.0);
+    } else {
+      hydrogen_ivp->push_back(0.0f);
+    }
     fprintf(fp, "%.4f,%.2f,%.3f,%.3f,%.3f,%d\n", last_time, voltage_ivp->back(),
             current_ivp->back(), power_ivp->back(), hydrogen_ivp->back(), mode);
     *progress = 1.0 / step * i;
@@ -675,7 +679,11 @@ int main(int, char**) {
       voltage.push_back(*vcp);
       current.push_back(*(vcp + 1));
       power.push_back(*(vcp + 2));
-      hydrogen.push_back(*(vcp + 1) / 26.801 / 2.0 * 23.8 * 20.0);
+      if (mode == 1) {
+        hydrogen.push_back(*(vcp + 1) / 26.801 / 2.0 * 23.8 * 20.0);
+      } else {
+        hydrogen.push_back(0.0f);
+      }
       fprintf(fp, "%.4f,%.2f,%.3f,%.3f,%.3f,%d\n", last_time, voltage.back(),
               current.back(), power.back(), hydrogen.back(), mode);
       if (current.size() > 1) {
@@ -702,8 +710,13 @@ int main(int, char**) {
         biggest_p = power[0] + 0.03;
       }
 
-      smallest_h = smallest_c / 26.801 / 2.0 * 23.8 * 20.0;
-      biggest_h = biggest_c / 26.801 / 2.0 * 23.8 * 20.0;
+      if (hydrogen.size() > 1) {
+        smallest_h = min(hydrogen.back() - 0.03, smallest_h);
+        biggest_h = max(hydrogen.back() + 0.03, biggest_h);
+      } else if (power.size() == 1) {
+        smallest_h = hydrogen[0] - 0.03;
+        biggest_h = hydrogen[0] + 0.03;
+      }
     }
     // Poll and handle events (inputs, window resize, etc.)
     // You can read the io.WantCaptureMouse, io.WantCaptureKeyboard flags to
