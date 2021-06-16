@@ -663,7 +663,7 @@ int main(int, char**) {
       if (!it8512.readVCP(vcp)) {
         std::cout << "读取电压、电流、功率失败!" << std::endl;
       }
-      if (mode == 0) {
+      if (mode == 1) {
         vcp[1] = psw.readCurrent();
         vcp[2] = vcp[0] * vcp[1];
       }
@@ -743,26 +743,34 @@ int main(int, char**) {
     // 2. Show a simple window that we create ourselves. We use a Begin/End
     // pair to created a named window.
     ImGui::Begin("运行状态");  // Pass a pointer to our bool variable (the
-    // window will have a closing button that will
-    // clear the bool when clicked)
+                               // window will have a closing button that will
+                               // clear the bool when clicked)
+    if ((progress > 0.999f) || (progress < 0.001f)) {
+      if (ImGui::RadioButton("发电模式", &mode, 0)) {
+        if (!it8512.loadOn()) {
+          std::cout << "打开电子负载失败!" << std::endl;
+        }
+        if (!psw.output(false)) {
+          std::cout << "关闭电源失败!" << std::endl;
+        }
+      }
+      ImGui::SameLine();
+      if (ImGui::RadioButton("电解模式", &mode, 1)) {
+        if (!it8512.loadOff()) {
+          std::cout << "关闭电子负载失败!" << std::endl;
+        }
+        if (!psw.output(true)) {
+          std::cout << "打开电源失败!" << std::endl;
+        }
+      }
+    } else {
+      if (mode == 0) {
+        ImGui::Text("发电模式扫描中...");
+      } else {
+        ImGui::Text("电解模式扫描中...");
+      }
+    }
 
-    if (ImGui::RadioButton("发电模式", &mode, 0)) {
-      if (!it8512.loadOn()) {
-        std::cout << "打开电子负载失败!" << std::endl;
-      }
-      if (!psw.output(false)) {
-        std::cout << "关闭电源失败!" << std::endl;
-      }
-    }
-    ImGui::SameLine();
-    if (ImGui::RadioButton("电解模式", &mode, 1)) {
-      if (!it8512.loadOff()) {
-        std::cout << "关闭电子负载失败!" << std::endl;
-      }
-      if (!psw.output(true)) {
-        std::cout << "打开电源失败!" << std::endl;
-      }
-    }
     if (voltage.size() > 0) {
       ImGui::Text("电压: %.2f  V", voltage.back());
       ImGui::Text("电流: %.3f A", current.back());
