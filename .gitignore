@@ -1,0 +1,4 @@
+outputs/
+Release/
+Debug/
+*.csv

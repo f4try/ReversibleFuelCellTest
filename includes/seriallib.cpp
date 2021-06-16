@@ -50,7 +50,7 @@ bool seriallib::openDevice() {
     return false;
   }
 
-  dcb.BaudRate = 9600;
+  dcb.BaudRate = 38400;
   dcb.ByteSize = 8;
   dcb.StopBits = 0;
   dcb.Parity = NOPARITY;

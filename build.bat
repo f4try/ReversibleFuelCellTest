@@ -9,10 +9,10 @@
 if not exist %OUT_DIR% mkdir %OUT_DIR%
 rc /v /fo%OUT_DIR%/resource.res resource.rc
 cl /nologo /Zi /MD /EHsc /std:c++17 %INCLUDES% %SOURCES% /Fe%OUT_DIR%/%OUT_EXE%.exe /Fo%OUT_DIR%/ /link %LIBS% *.obj %OUT_DIR%/resource.res 
-%~dp0/%OUT_DIR%/%OUT_EXE%.exe
+@REM %~dp0/%OUT_DIR%/%OUT_EXE%.exe
 
-@REM @set OUT_DIR=Release
-@REM @set OUT_EXE=rsoc_test
-@REM if not exist %OUT_DIR% mkdir %OUT_DIR%
-@REM rc /v /fo%OUT_DIR%/resource.res resource.rc
-@REM cl /Zi /MD /Ox /Oi /EHsc /std:c++17 %INCLUDES% %SOURCES% /Fe%OUT_DIR%/%OUT_EXE%.exe /Fo%OUT_DIR%/ /link %LIBS% *.obj %OUT_DIR%/resource.res 
+@set OUT_DIR=Release
+@set OUT_EXE=rsoc_test
+if not exist %OUT_DIR% mkdir %OUT_DIR%
+rc /v /fo%OUT_DIR%/resource.res resource.rc
+cl /Zi /MD /Ox /Oi /EHsc /std:c++17 %INCLUDES% %SOURCES% /Fe%OUT_DIR%/%OUT_EXE%.exe /Fo%OUT_DIR%/ /link %LIBS% *.obj %OUT_DIR%/resource.res 

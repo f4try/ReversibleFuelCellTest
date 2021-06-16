@@ -14,7 +14,7 @@ visalib::visalib(char* deviceName) {
   }
 
   viSetAttribute(instr, VI_ATTR_TMO_VALUE, 5000);
-  viSetAttribute(instr, VI_ATTR_ASRL_BAUD, 9600);
+  viSetAttribute(instr, VI_ATTR_ASRL_BAUD, 115200);
   viSetAttribute(instr, VI_ATTR_ASRL_DATA_BITS, 8);
   viSetAttribute(instr, VI_ATTR_ASRL_PARITY, VI_ASRL_PAR_NONE);
   viSetAttribute(instr, VI_ATTR_ASRL_STOP_BITS, VI_ASRL_STOP_ONE);

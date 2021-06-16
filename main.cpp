@@ -453,12 +453,10 @@ void sweep_ivp(seriallib* it8512, visalib* psw, float set_current,
     std::this_thread::sleep_for(
         std::chrono::milliseconds(int(step_time * 1000)));
     last_time = step_time * i;
-    if (mode == 0) {
-      if (!it8512->readVCP(vcp)) {
-        std::cout << "读取电压、电流、功率失败!" << std::endl;
-      }
-    } else {
-      vcp[0] = psw->readVoltage();
+    if (!it8512->readVCP(vcp)) {
+      std::cout << "读取电压、电流、功率失败!" << std::endl;
+    }
+    if (mode == 1) {
       vcp[1] = psw->readCurrent();
       vcp[2] = vcp[1] * vcp[2];
     }
@@ -605,6 +603,7 @@ int main(int, char**) {
   // Our state
   static int mode = 0;
   static float progress = 0.0f;
+  static float readFreq = 20.0f;
   ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
   static bool setting_window_status = false;
   // inital serial
@@ -660,13 +659,11 @@ int main(int, char**) {
 
   // Main loop
   while (!glfwWindowShouldClose(window)) {
-    if (ImGui::GetTime() - last_time > 0.5) {
+    if (ImGui::GetTime() - last_time > 1.0f / readFreq) {
+      if (!it8512.readVCP(vcp)) {
+        std::cout << "读取电压、电流、功率失败!" << std::endl;
+      }
       if (mode == 0) {
-        if (!it8512.readVCP(vcp)) {
-          std::cout << "读取电压、电流、功率失败!" << std::endl;
-        }
-      } else {
-        vcp[0] = psw.readVoltage();
         vcp[1] = psw.readCurrent();
         vcp[2] = vcp[0] * vcp[1];
       }
@@ -739,12 +736,12 @@ int main(int, char**) {
     ImGui::NewFrame();
 
     // 1. Show the big demo window (Most of the sample code is in
-    // ImGui::ShowDemoWindow()! You can browse its code to learn more about Dear
-    // ImGui!).
-    // if (show_demo_window) ImGui::ShowDemoWindow(&show_demo_window);
+    // ImGui::ShowDemoWindow()! You can browse its code to learn more about
+    // Dear ImGui!). if (show_demo_window)
+    // ImGui::ShowDemoWindow(&show_demo_window);
 
-    // 2. Show a simple window that we create ourselves. We use a Begin/End pair
-    // to created a named window.
+    // 2. Show a simple window that we create ourselves. We use a Begin/End
+    // pair to created a named window.
     ImGui::Begin("运行状态");  // Pass a pointer to our bool variable (the
     // window will have a closing button that will
     // clear the bool when clicked)
@@ -775,7 +772,7 @@ int main(int, char**) {
       ImGui::Text("产氢率: %.3f NL/h", hydrogen.back());
     }
     ImGui::Text("FPS %.1f", ImGui::GetIO().Framerate);
-    ImGui::Checkbox("样式", &setting_window_status);
+    ImGui::Checkbox("设置", &setting_window_status);
     ImGui::PushStyleColor(ImGuiCol_PlotHistogram,
                           (ImVec4)ImColor::ImColor(26, 115, 232, 256));
     if (power.size() > 0) {
@@ -794,11 +791,12 @@ int main(int, char**) {
     ImGui::End();
 
     if (setting_window_status) {
-      ImGui::Begin("样式", &setting_window_status);
+      ImGui::Begin("设置", &setting_window_status);
       ImGui::ShowStyleSelector("界面样式");
       ImPlot::ShowStyleSelector("绘图样式");
       ImPlot::ShowColormapSelector("图线颜色");
       ImGui::Checkbox("图线抗锯齿", &ImPlot::GetStyle().AntiAliasedLines);
+      ImGui::DragFloat("采样频率 (Hz)", &readFreq, 1.0, 1.0, 60.0);
       ImGui::End();
     }
     static float set_current = 0.0f;
@@ -813,7 +811,7 @@ int main(int, char**) {
     } else {
       ImGui::DragFloat("电源电压 (V)", &set_voltage, 0.5, 0.0, 10.0);
     }
-    if (ImGui::Button("设置")) {
+    if (ImGui::Button("确定")) {
       if (mode == 0) {
         it8512.setCurrent(set_current);
       } else {
