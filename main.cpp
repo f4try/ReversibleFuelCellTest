@@ -603,7 +603,7 @@ int main(int, char**) {
   // Our state
   static int mode = 0;
   static float progress = 0.0f;
-  static float readFreq = 20.0f;
+  static float readFreq = 10.0f;
   ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
   static bool setting_window_status = false;
   // inital serial
