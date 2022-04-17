@@ -100,7 +100,7 @@ bool seriallib::readVCP(float* vcp) {
 
 int seriallib::readHex(const unsigned char* Buffer) {
   return Buffer[0] + Buffer[1] * 256 + Buffer[2] * 256 * 256 +
-         Buffer[2] * 256 * 256 * 256;
+         Buffer[3] * 256 * 256 * 256;
 }
 
 bool seriallib::setRemote() {

@@ -615,7 +615,7 @@ int main(int, char**) {
   if (!it8512.loadOn()) {
     std::cout << "打开电子负载失败!" << std::endl;
   }
-  visalib psw("ASRL3::INSTR");
+  visalib psw("ASRL4::INSTR");
   if (!psw.output(false)) {
     std::cout << "关闭电源失败!" << std::endl;
   }
@@ -828,9 +828,9 @@ int main(int, char**) {
 
     ImGui::Begin("测试参数");
     if (mode == 0) {
-      ImGui::DragFloat("负载电流 (A)", &set_current, 0.5, 0.0, 10.0);
+      ImGui::DragFloat("负载电流 (A)", &set_current, 0.5, 0.0, 20.0);
     } else {
-      ImGui::DragFloat("电源电压 (V)", &set_voltage, 0.5, 0.0, 10.0);
+      ImGui::DragFloat("电源电压 (V)", &set_voltage, 0.5, 0.0, 50.0);
     }
     if (ImGui::Button("确定")) {
       if (mode == 0) {
