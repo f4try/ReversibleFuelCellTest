@@ -182,3 +182,43 @@ bool seriallib::setCurrent(float current) {
   }
   return true;
 }
+
+bool seriallib::setVoltage(float voltage) {
+  unsigned char inputBuffer[26] = {0xAA, 0x00, 0x2C, 0x00, 0x00, 0x00, 0x00,
+                                   0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                                   0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                                   0x00, 0x00, 0x00, 0x00, 0x00};
+  const unsigned int voltage_int = unsigned int(voltage * 1000);
+  inputBuffer[3] = voltage_int % 256;
+  inputBuffer[4] = voltage_int >> 8 % 256;
+  inputBuffer[5] = voltage_int >> 16 % 256;
+  inputBuffer[6] = voltage_int >> 24 % 256;
+  crc(inputBuffer);
+  if (writeBytes(inputBuffer) != 26) {
+    return false;
+  }
+  unsigned char outputBuffer[26];
+  if (readBytes(outputBuffer) != 26) {
+    return false;
+  }
+  return true;
+}
+
+bool seriallib::setLoadType(int loadtype) {
+  unsigned char inputBuffer[26] = {0xAA, 0x00, 0x28, 0x00, 0x00, 0x00, 0x00,
+                                   0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                                   0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+                                   0x00, 0x00, 0x00, 0x00, 0xD2};
+  if (loadtype == 1) {
+    inputBuffer[3] = 0x01;
+    inputBuffer[25] = 0xD3;
+  }
+  if (writeBytes(inputBuffer) != 26) {
+    return false;
+  }
+  unsigned char outputBuffer[26];
+  if (readBytes(outputBuffer) != 26) {
+    return false;
+  }
+  return true;
+}

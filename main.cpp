@@ -412,8 +412,8 @@ void sweep_ivp(seriallib* it8512, visalib* psw, float set_current,
                float set_voltage, float ocv, int step, float step_time,
                int mode, float* progress, std::vector<float>* time_ivp,
                std::vector<float>* voltage_ivp, std::vector<float>* current_ivp,
-               std::vector<float>* power_ivp,
-               std::vector<float>* hydrogen_ivp) {
+               std::vector<float>* power_ivp, std::vector<float>* hydrogen_ivp,
+               float temperature, float fuel_flow, float air_flow) {
   time_ivp->clear();
   voltage_ivp->clear();
   current_ivp->clear();
@@ -434,7 +434,10 @@ void sweep_ivp(seriallib* it8512, visalib* psw, float set_current,
             ltm->tm_min, ltm->tm_sec);
   }
   fp = fopen(filename, "a");
-  fputs("time,voltage,current,power,hydrogen,mode\n", fp);
+  fputs(
+      "time,voltage,current,power,hydrogen,mode,temperature,fuel_flow,air_"
+      "flow\n",
+      fp);
   // double start_time = ImGui::GetTime();
   // double now = ImGui::GetTime();
   double last_time = 0.0;
@@ -472,8 +475,9 @@ void sweep_ivp(seriallib* it8512, visalib* psw, float set_current,
     } else {
       hydrogen_ivp->push_back(0.0f);
     }
-    fprintf(fp, "%.4f,%.2f,%.3f,%.3f,%.3f,%d\n", last_time, voltage_ivp->back(),
-            current_ivp->back(), power_ivp->back(), hydrogen_ivp->back(), mode);
+    fprintf(fp, "%.4f,%.2f,%.3f,%.3f,%.3f,%d,%.1f,%.3f,%.3f\n", last_time,
+            voltage_ivp->back(), current_ivp->back(), power_ivp->back(),
+            hydrogen_ivp->back(), mode, temperature, fuel_flow, air_flow);
     *progress = 1.0 / step * i;
   }
   fclose(fp);
@@ -606,13 +610,14 @@ int main(int, char**) {
 
   // Our state
   static int mode = 0;
+  static int load_type = 0;
   static float progress = 0.0f;
   static float readFreq = 10.0f;
   ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
   static bool setting_window_status = false;
   // inital serial
   seriallib it8512("COM6");
-  if (!it8512.loadOn()) {
+  if (!it8512.loadOn() || !it8512.setLoadType(0)) {
     std::cout << "打开电子负载失败!" << std::endl;
   }
   visalib psw("ASRL4::INSTR");
@@ -627,6 +632,9 @@ int main(int, char**) {
   std::vector<float> current = {};
   std::vector<float> power = {};
   std::vector<float> hydrogen = {};
+  float temperature = 700.0f;
+  float fuel_flow = 0.0f;
+  float air_flow = 20.0f;
 
   std::vector<float> time_ivp = {};
   std::vector<float> voltage_ivp = {};
@@ -659,7 +667,10 @@ int main(int, char**) {
           ltm->tm_mon + 1, ltm->tm_mday, ltm->tm_hour, ltm->tm_min,
           ltm->tm_sec);
   fp = fopen(filename, "a");
-  fputs("time,voltage,current,power,hydrogen,mode\n", fp);
+  fputs(
+      "time,voltage,current,power,hydrogen,mode,temperature,fuel_flow,air_"
+      "flow\n",
+      fp);
 
   // Main loop
   while (!glfwWindowShouldClose(window)) {
@@ -684,8 +695,9 @@ int main(int, char**) {
       } else {
         hydrogen.push_back(0.0f);
       }
-      fprintf(fp, "%.4f,%.2f,%.3f,%.3f,%.3f,%d\n", last_time, voltage.back(),
-              current.back(), power.back(), hydrogen.back(), mode);
+      fprintf(fp, "%.4f,%.2f,%.3f,%.3f,%.3f,%d,%.1f,%.3f,%.3f\n", last_time,
+              voltage.back(), current.back(), power.back(), hydrogen.back(),
+              mode, temperature, fuel_flow, air_flow);
       if (current.size() > 1) {
         smallest_c = min(current.back() - 0.03, smallest_c);
         biggest_c = max(current.back() + 0.03, biggest_c);
@@ -792,6 +804,10 @@ int main(int, char**) {
     if (mode == 1) {
       ImGui::Text("产氢率: %.3f NL/h", hydrogen.back());
     }
+
+    ImGui::DragFloat("温度 (°C)", &temperature, 10.0, 0.0, 1000.0, "%.1f");
+    ImGui::DragFloat("燃料流速 (L/min)", &fuel_flow, 0.1, 0.0, 20.0, "%.3f");
+    ImGui::DragFloat("空气流速 (L/min)", &air_flow, 0.1, 0.0, 100.0, "%.3f");
     ImGui::Text("FPS %.1f", ImGui::GetIO().Framerate);
     ImGui::Checkbox("设置", &setting_window_status);
     ImGui::PushStyleColor(ImGuiCol_PlotHistogram,
@@ -822,19 +838,39 @@ int main(int, char**) {
     }
     static float set_current = 0.0f;
     static float ocv = 0.0f;
+    static float set_load_voltage = 30.0f;
     static float set_voltage = 0.0f;
     static int step = 20;
     static float step_time = 1.0;
 
     ImGui::Begin("测试参数");
+    if (ImGui::RadioButton("负载电流", &load_type, 0)) {
+      set_current = 0.0f;
+      it8512.setCurrent(set_current);
+      it8512.setLoadType(0);
+    }
+    ImGui::SameLine();
+    if (ImGui::RadioButton("负载电压", &load_type, 1)) {
+      set_load_voltage = 30.0f;
+      it8512.setVoltage(set_load_voltage);
+      it8512.setLoadType(1);
+    }
     if (mode == 0) {
-      ImGui::DragFloat("负载电流 (A)", &set_current, 0.5, 0.0, 20.0);
+      if (load_type == 0) {
+        ImGui::DragFloat("负载电流 (A)", &set_current, 0.5, 0.0, 20.0);
+      } else {
+        ImGui::DragFloat("负载电压 (V)", &set_load_voltage, 0.5, 0.0, 30.0);
+      }
     } else {
       ImGui::DragFloat("电源电压 (V)", &set_voltage, 0.5, 0.0, 50.0);
     }
     if (ImGui::Button("确定")) {
       if (mode == 0) {
-        it8512.setCurrent(set_current);
+        if (load_type == 0) {
+          it8512.setCurrent(set_current);
+        } else {
+          it8512.setVoltage(set_load_voltage);
+        }
       } else {
         psw.setVoltage(set_voltage);
       }
@@ -842,21 +878,24 @@ int main(int, char**) {
     if (mode == 1) {
       ImGui::DragFloat("OCV (V)", &ocv, 0.5, 0.0, 35.0);
     }
-    ImGui::DragInt("扫描步数 ", &step, 10, 10, 50);
-    ImGui::DragFloat("扫描步长 (s)", &step_time, 0.5, 0.5, 10.0);
-    if (ImGui::Button("扫描") && ((progress > 0.999f) || (progress < 0.001f))) {
-      std::thread th_sweep(sweep_ivp, &it8512, &psw, set_current, set_voltage,
-                           ocv, step, step_time, mode, &progress, &time_ivp,
-                           &voltage_ivp, &current_ivp, &power_ivp,
-                           &hydrogen_ivp);
-      th_sweep.detach();
+    if (mode == 1 || load_type == 0) {
+      ImGui::DragInt("扫描步数 ", &step, 10, 10, 50);
+      ImGui::DragFloat("扫描步长 (s)", &step_time, 0.5, 0.5, 10.0);
+      if (ImGui::Button("扫描") &&
+          ((progress > 0.999f) || (progress < 0.001f))) {
+        std::thread th_sweep(sweep_ivp, &it8512, &psw, set_current, set_voltage,
+                             ocv, step, step_time, mode, &progress, &time_ivp,
+                             &voltage_ivp, &current_ivp, &power_ivp,
+                             &hydrogen_ivp, temperature, fuel_flow, air_flow);
+        th_sweep.detach();
+      }
+      // ImGui::PushStyleColor(ImGuiCol_FrameBg,
+      //                       (ImVec4)ImColor::ImColor(252, 252, 252, 256));
+      ImGui::PushStyleColor(ImGuiCol_PlotHistogram,
+                            (ImVec4)ImColor::ImColor(26, 115, 232, 256));
+      ImGui::ProgressBar(progress, ImVec2(0.0f, 0.0f));
+      ImGui::PopStyleColor();
     }
-    // ImGui::PushStyleColor(ImGuiCol_FrameBg,
-    //                       (ImVec4)ImColor::ImColor(252, 252, 252, 256));
-    ImGui::PushStyleColor(ImGuiCol_PlotHistogram,
-                          (ImVec4)ImColor::ImColor(26, 115, 232, 256));
-    ImGui::ProgressBar(progress, ImVec2(0.0f, 0.0f));
-    ImGui::PopStyleColor();
     ImGui::End();
 
     ImGui::Begin("测试结果");
