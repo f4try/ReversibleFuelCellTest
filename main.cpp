@@ -413,7 +413,8 @@ void sweep_ivp(seriallib* it8512, visalib* psw, float set_current,
                int mode, float* progress, std::vector<float>* time_ivp,
                std::vector<float>* voltage_ivp, std::vector<float>* current_ivp,
                std::vector<float>* power_ivp, std::vector<float>* hydrogen_ivp,
-               float temperature, float fuel_flow, float air_flow) {
+               float temperature, float fuel_flow, float air_flow,
+               int load_type) {
   time_ivp->clear();
   voltage_ivp->clear();
   current_ivp->clear();
@@ -435,8 +436,8 @@ void sweep_ivp(seriallib* it8512, visalib* psw, float set_current,
   }
   fp = fopen(filename, "a");
   fputs(
-      "time,voltage,current,power,hydrogen,mode,temperature,fuel_flow,air_"
-      "flow\n",
+      "time,voltage,current,power,hydrogen,mode,temperature,fuel_flow,air_flow,"
+      "load_type\n",
       fp);
   // double start_time = ImGui::GetTime();
   // double now = ImGui::GetTime();
@@ -475,9 +476,10 @@ void sweep_ivp(seriallib* it8512, visalib* psw, float set_current,
     } else {
       hydrogen_ivp->push_back(0.0f);
     }
-    fprintf(fp, "%.4f,%.2f,%.3f,%.3f,%.3f,%d,%.1f,%.3f,%.3f\n", last_time,
+    fprintf(fp, "%.4f,%.2f,%.3f,%.3f,%.3f,%d,%.1f,%.3f,%.3f,%d\n", last_time,
             voltage_ivp->back(), current_ivp->back(), power_ivp->back(),
-            hydrogen_ivp->back(), mode, temperature, fuel_flow, air_flow);
+            hydrogen_ivp->back(), mode, temperature, fuel_flow, air_flow,
+            load_type);
     *progress = 1.0 / step * i;
   }
   fclose(fp);
@@ -669,7 +671,7 @@ int main(int, char**) {
   fp = fopen(filename, "a");
   fputs(
       "time,voltage,current,power,hydrogen,mode,temperature,fuel_flow,air_"
-      "flow\n",
+      "flow,load_type\n",
       fp);
 
   // Main loop
@@ -695,9 +697,9 @@ int main(int, char**) {
       } else {
         hydrogen.push_back(0.0f);
       }
-      fprintf(fp, "%.4f,%.2f,%.3f,%.3f,%.3f,%d,%.1f,%.3f,%.3f\n", last_time,
+      fprintf(fp, "%.4f,%.2f,%.3f,%.3f,%.3f,%d,%.1f,%.3f,%.3f,%d\n", last_time,
               voltage.back(), current.back(), power.back(), hydrogen.back(),
-              mode, temperature, fuel_flow, air_flow);
+              mode, temperature, fuel_flow, air_flow, load_type);
       if (current.size() > 1) {
         smallest_c = min(current.back() - 0.03, smallest_c);
         biggest_c = max(current.back() + 0.03, biggest_c);
@@ -886,7 +888,8 @@ int main(int, char**) {
         std::thread th_sweep(sweep_ivp, &it8512, &psw, set_current, set_voltage,
                              ocv, step, step_time, mode, &progress, &time_ivp,
                              &voltage_ivp, &current_ivp, &power_ivp,
-                             &hydrogen_ivp, temperature, fuel_flow, air_flow);
+                             &hydrogen_ivp, temperature, fuel_flow, air_flow,
+                             load_type);
         th_sweep.detach();
       }
       // ImGui::PushStyleColor(ImGuiCol_FrameBg,

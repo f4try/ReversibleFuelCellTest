@@ -204,12 +204,12 @@ bool seriallib::setVoltage(float voltage) {
   return true;
 }
 
-bool seriallib::setLoadType(int loadtype) {
+bool seriallib::setLoadType(int load_type) {
   unsigned char inputBuffer[26] = {0xAA, 0x00, 0x28, 0x00, 0x00, 0x00, 0x00,
                                    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
                                    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
                                    0x00, 0x00, 0x00, 0x00, 0xD2};
-  if (loadtype == 1) {
+  if (load_type == 1) {
     inputBuffer[3] = 0x01;
     inputBuffer[25] = 0xD3;
   }

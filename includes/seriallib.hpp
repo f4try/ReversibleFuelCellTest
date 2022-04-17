@@ -18,7 +18,7 @@ class seriallib {
   bool loadOff();
   bool setCurrent(float current);
   bool setVoltage(float voltage);
-  bool setLoadType(int loadtype);
+  bool setLoadType(int load_type);
 
  private:
   LPCSTR gszPort;
