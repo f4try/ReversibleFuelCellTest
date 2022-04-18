@@ -408,6 +408,29 @@ static void glfw_error_callback(int error, const char* description) {
   fprintf(stderr, "Glfw Error %d: %s\n", error, description);
 }
 
+bool turn_on_output(seriallib* it8512, visalib* psw, int mode) {
+  if (mode == 0) {
+    if (!it8512->loadOn()) {
+      std::cout << "打开电子负载失败!" << std::endl;
+      return false;
+    }
+    if (!psw->output(false)) {
+      std::cout << "关闭电源失败!" << std::endl;
+      return false;
+    }
+  } else {
+    if (!it8512->loadOff()) {
+      std::cout << "关闭电子负载失败!" << std::endl;
+      return false;
+    }
+    if (!psw->output(true)) {
+      std::cout << "打开电源失败!" << std::endl;
+      return false;
+    }
+  }
+  return true;
+}
+
 void sweep_ivp(seriallib* it8512, visalib* psw, float set_current,
                float set_voltage, float ocv, int step, float step_time,
                int mode, float* progress, std::vector<float>* time_ivp,
@@ -459,14 +482,20 @@ void sweep_ivp(seriallib* it8512, visalib* psw, float set_current,
         inputs.push_back((set_voltage - ocv) / step * i + ocv);
       }
     }
-  }
-  if (sweep_type == 1) {
+  } else {
     std::vector<float> items;
-    for (int i = 0; i < step + 1; i++) {
-      if (mode == 0) {
-        items.push_back(set_current / step * i);
-      } else {
-        items.push_back((set_voltage - ocv) / step * i + ocv);
+    if (sweep_type == 1) {
+      for (int i = 0; i < step + 1; i++) {
+        if (mode == 0 && load_type == 0) {
+          items.push_back(set_current / step * i);
+        } else {
+          items.push_back((set_voltage - ocv) / step * i + ocv);
+        }
+      }
+    }
+    if (sweep_type == 2) {
+      for (int i = 0; i < step + 1; i++) {
+        items.push_back((ocv - set_voltage) * 2. / step * i + set_voltage);
       }
     }
     for (int i = 0; i < items.size(); i++) {
@@ -479,9 +508,27 @@ void sweep_ivp(seriallib* it8512, visalib* psw, float set_current,
   }
 
   for (int i = 0; i < inputs.size(); i++) {
+    // std::cout << inputs[i] << std::endl;
+    if (sweep_type == 2) {
+      if (i > 0 && (inputs[i - 1] - ocv) * (inputs[i] - ocv) <= 0) {
+        if (inputs[i] <= ocv) {
+          mode = 0;
+          turn_on_output(it8512, psw, 0);
+        } else {
+          mode = 1;
+          turn_on_output(it8512, psw, 1);
+        }
+      }
+    }
     if (mode == 0) {
-      if (!it8512->setCurrent(inputs[i])) {
-        std::cout << "设置负载电流失败!" << std::endl;
+      if (load_type == 0) {
+        if (!it8512->setCurrent(inputs[i])) {
+          std::cout << "设置负载电流失败!" << std::endl;
+        }
+      } else if (load_type == 1) {
+        if (!it8512->setVoltage(inputs[i])) {
+          std::cout << "设置负载电压失败!" << std::endl;
+        }
       }
     } else {
       if (!psw->setVoltage(inputs[i])) {
@@ -813,22 +860,12 @@ int main(int, char**) {
       if (ImGui::RadioButton("发电模式", &mode, 0)) {
         sweep_type = 0;
         load_type = 0;
-        if (!it8512.loadOn()) {
-          std::cout << "打开电子负载失败!" << std::endl;
-        }
-        if (!psw.output(false)) {
-          std::cout << "关闭电源失败!" << std::endl;
-        }
+        turn_on_output(&it8512, &psw, 0);
       }
       ImGui::SameLine();
       if (ImGui::RadioButton("电解模式", &mode, 1)) {
         sweep_type = 0;
-        if (!it8512.loadOff()) {
-          std::cout << "关闭电子负载失败!" << std::endl;
-        }
-        if (!psw.output(true)) {
-          std::cout << "打开电源失败!" << std::endl;
-        }
+        turn_on_output(&it8512, &psw, 1);
       }
     } else {
       if (mode == 0) {
@@ -879,7 +916,7 @@ int main(int, char**) {
       ImGui::End();
     }
     static float set_current = 0.0f;
-    static float ocv = 0.0f;
+    static float ocv = 30.0f;
     static float set_load_voltage = 30.0f;
     static float set_voltage = 0.0f;
     static int step = 20;
@@ -890,6 +927,7 @@ int main(int, char**) {
       if (ImGui::RadioButton("负载电流", &load_type, 0)) {
         set_current = 0.0f;
         sweep_type = 0;
+        step = 20;
         it8512.setCurrent(set_current);
         it8512.setLoadType(0);
       }
@@ -897,6 +935,7 @@ int main(int, char**) {
       if (ImGui::RadioButton("负载电压", &load_type, 1)) {
         set_load_voltage = 30.0f;
         sweep_type = 1;
+        step = 1;
         it8512.setVoltage(set_load_voltage);
         it8512.setLoadType(1);
       }
@@ -952,14 +991,20 @@ int main(int, char**) {
       }
     }
 
-    ImGui::DragInt("扫描步数 ", &step, 10, 10, 50);
+    ImGui::DragInt("扫描步数 ", &step, 1, 1, 50);
     ImGui::DragFloat("扫描步长 (s)", &step_time, 0.5, 0.5, 10.0);
     if (ImGui::Button("扫描") && ((progress > 0.999f) || (progress < 0.001f))) {
-      std::thread th_sweep(sweep_ivp, &it8512, &psw, set_current, set_voltage,
-                           ocv, step, step_time, mode, &progress, &time_ivp,
-                           &voltage_ivp, &current_ivp, &power_ivp,
-                           &hydrogen_ivp, temperature, fuel_flow, air_flow,
-                           load_type, sweep_type);
+      float set_voltage_input;
+      if (mode == 0) {
+        set_voltage_input = set_load_voltage;
+      } else {
+        set_voltage_input = set_voltage;
+      }
+      std::thread th_sweep(sweep_ivp, &it8512, &psw, set_current,
+                           set_voltage_input, ocv, step, step_time, mode,
+                           &progress, &time_ivp, &voltage_ivp, &current_ivp,
+                           &power_ivp, &hydrogen_ivp, temperature, fuel_flow,
+                           air_flow, load_type, sweep_type);
       th_sweep.detach();
     }
     // ImGui::PushStyleColor(ImGuiCol_FrameBg,
