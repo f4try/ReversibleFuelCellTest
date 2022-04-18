@@ -414,7 +414,7 @@ void sweep_ivp(seriallib* it8512, visalib* psw, float set_current,
                std::vector<float>* voltage_ivp, std::vector<float>* current_ivp,
                std::vector<float>* power_ivp, std::vector<float>* hydrogen_ivp,
                float temperature, float fuel_flow, float air_flow,
-               int load_type) {
+               int load_type, int sweep_type) {
   time_ivp->clear();
   voltage_ivp->clear();
   current_ivp->clear();
@@ -425,15 +425,22 @@ void sweep_ivp(seriallib* it8512, visalib* psw, float set_current,
   time_t now = std::time(0);
   tm* ltm = localtime(&now);
   char filename[80];
-  if (mode == 0) {
-    sprintf(filename, "outputs\\ivp-fc-%d-%d-%d-%d-%d-%d.csv",
-            ltm->tm_year + 1900, ltm->tm_mon + 1, ltm->tm_mday, ltm->tm_hour,
-            ltm->tm_min, ltm->tm_sec);
-  } else {
-    sprintf(filename, "outputs\\ivp-ec-%d-%d-%d-%d-%d-%d.csv",
-            ltm->tm_year + 1900, ltm->tm_mon + 1, ltm->tm_mday, ltm->tm_hour,
-            ltm->tm_min, ltm->tm_sec);
+  std::string str_filename;
+  if (mode == 0 && sweep_type == 0) {
+    str_filename = "outputs\\ivp-fc-%d-%d-%d-%d-%d-%d.csv";
+  } else if (mode == 1 && sweep_type == 0) {
+    str_filename = "outputs\\ivp-ec-%d-%d-%d-%d-%d-%d.csv";
+  } else if (mode == 0 && load_type == 0 && sweep_type == 1) {
+    str_filename = "outputs\\load_switch-fc-current-%d-%d-%d-%d-%d-%d.csv";
+  } else if (mode == 0 && load_type == 1 && sweep_type == 1) {
+    str_filename = "outputs\\voltage_switch-fc-%d-%d-%d-%d-%d-%d.csv";
+  } else if (mode == 1 && sweep_type == 1) {
+    str_filename = "outputs\\voltage_switch-ec-%d-%d-%d-%d-%d-%d.csv";
+  } else if (mode == 0 && load_type == 1 && sweep_type == 2) {
+    str_filename = "outputs\\voltage_mode_switch-fcec-%d-%d-%d-%d-%d-%d.csv";
   }
+  sprintf(filename, str_filename.c_str(), ltm->tm_year + 1900, ltm->tm_mon + 1,
+          ltm->tm_mday, ltm->tm_hour, ltm->tm_min, ltm->tm_sec);
   fp = fopen(filename, "a");
   fputs(
       "time,voltage,current,power,hydrogen,mode,temperature,fuel_flow,air_flow,"
@@ -443,16 +450,45 @@ void sweep_ivp(seriallib* it8512, visalib* psw, float set_current,
   // double now = ImGui::GetTime();
   double last_time = 0.0;
   float vcp[3];
-  for (int i = 0; i < step + 1; i++) {
+  std::vector<float> inputs;
+  if (sweep_type == 0) {
+    for (int i = 0; i < step + 1; i++) {
+      if (mode == 0) {
+        inputs.push_back(set_current / step * i);
+      } else {
+        inputs.push_back((set_voltage - ocv) / step * i + ocv);
+      }
+    }
+  }
+  if (sweep_type == 1) {
+    std::vector<float> items;
+    for (int i = 0; i < step + 1; i++) {
+      if (mode == 0) {
+        items.push_back(set_current / step * i);
+      } else {
+        items.push_back((set_voltage - ocv) / step * i + ocv);
+      }
+    }
+    for (int i = 0; i < items.size(); i++) {
+      for (int j = i + 1; j < items.size(); j++) {
+        inputs.push_back(items[i]);
+        inputs.push_back(items[j]);
+        inputs.push_back(items[i]);
+      }
+    }
+  }
+
+  for (int i = 0; i < inputs.size(); i++) {
     if (mode == 0) {
-      if (!it8512->setCurrent(set_current / step * i)) {
+      if (!it8512->setCurrent(inputs[i])) {
         std::cout << "设置负载电流失败!" << std::endl;
       }
     } else {
-      if (!psw->setVoltage((set_voltage - ocv) / step * i + ocv)) {
+      if (!psw->setVoltage(inputs[i])) {
         std::cout << "设置电源电压失败!" << std::endl;
       }
     }
+
     // Sleep(step_time * 1000);
     std::this_thread::sleep_for(
         std::chrono::milliseconds(int(step_time * 1000)));
@@ -480,7 +516,7 @@ void sweep_ivp(seriallib* it8512, visalib* psw, float set_current,
             voltage_ivp->back(), current_ivp->back(), power_ivp->back(),
             hydrogen_ivp->back(), mode, temperature, fuel_flow, air_flow,
             load_type);
-    *progress = 1.0 / step * i;
+    *progress = 1.0 / (inputs.size() - 1) * i;
   }
   fclose(fp);
 }
@@ -613,6 +649,7 @@ int main(int, char**) {
   // Our state
   static int mode = 0;
   static int load_type = 0;
+  static int sweep_type = 0;
   static float progress = 0.0f;
   static float readFreq = 10.0f;
   ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
@@ -774,6 +811,8 @@ int main(int, char**) {
                                // clear the bool when clicked)
     if ((progress > 0.999f) || (progress < 0.001f)) {
       if (ImGui::RadioButton("发电模式", &mode, 0)) {
+        sweep_type = 0;
+        load_type = 0;
         if (!it8512.loadOn()) {
           std::cout << "打开电子负载失败!" << std::endl;
         }
@@ -783,6 +822,7 @@ int main(int, char**) {
       }
       ImGui::SameLine();
       if (ImGui::RadioButton("电解模式", &mode, 1)) {
+        sweep_type = 0;
         if (!it8512.loadOff()) {
           std::cout << "关闭电子负载失败!" << std::endl;
         }
@@ -846,17 +886,22 @@ int main(int, char**) {
     static float step_time = 1.0;
 
     ImGui::Begin("测试参数");
-    if (ImGui::RadioButton("负载电流", &load_type, 0)) {
-      set_current = 0.0f;
-      it8512.setCurrent(set_current);
-      it8512.setLoadType(0);
+    if (mode == 0) {
+      if (ImGui::RadioButton("负载电流", &load_type, 0)) {
+        set_current = 0.0f;
+        sweep_type = 0;
+        it8512.setCurrent(set_current);
+        it8512.setLoadType(0);
+      }
+      ImGui::SameLine();
+      if (ImGui::RadioButton("负载电压", &load_type, 1)) {
+        set_load_voltage = 30.0f;
+        sweep_type = 1;
+        it8512.setVoltage(set_load_voltage);
+        it8512.setLoadType(1);
+      }
     }
-    ImGui::SameLine();
-    if (ImGui::RadioButton("负载电压", &load_type, 1)) {
-      set_load_voltage = 30.0f;
-      it8512.setVoltage(set_load_voltage);
-      it8512.setLoadType(1);
-    }
+
     if (mode == 0) {
       if (load_type == 0) {
         ImGui::DragFloat("负载电流 (A)", &set_current, 0.5, 0.0, 20.0);
@@ -877,28 +922,53 @@ int main(int, char**) {
         psw.setVoltage(set_voltage);
       }
     }
-    if (mode == 1) {
+    if (mode == 1 || load_type == 1) {
       ImGui::DragFloat("OCV (V)", &ocv, 0.5, 0.0, 35.0);
     }
     if (mode == 1 || load_type == 0) {
-      ImGui::DragInt("扫描步数 ", &step, 10, 10, 50);
-      ImGui::DragFloat("扫描步长 (s)", &step_time, 0.5, 0.5, 10.0);
-      if (ImGui::Button("扫描") &&
-          ((progress > 0.999f) || (progress < 0.001f))) {
-        std::thread th_sweep(sweep_ivp, &it8512, &psw, set_current, set_voltage,
-                             ocv, step, step_time, mode, &progress, &time_ivp,
-                             &voltage_ivp, &current_ivp, &power_ivp,
-                             &hydrogen_ivp, temperature, fuel_flow, air_flow,
-                             load_type);
-        th_sweep.detach();
+      if (ImGui::RadioButton("VI曲线", &sweep_type, 0)) {
+        step = 20;
       }
-      // ImGui::PushStyleColor(ImGuiCol_FrameBg,
-      //                       (ImVec4)ImColor::ImColor(252, 252, 252, 256));
-      ImGui::PushStyleColor(ImGuiCol_PlotHistogram,
-                            (ImVec4)ImColor::ImColor(26, 115, 232, 256));
-      ImGui::ProgressBar(progress, ImVec2(0.0f, 0.0f));
-      ImGui::PopStyleColor();
     }
+    if (mode == 0 && load_type == 0) {
+      ImGui::SameLine();
+      if (ImGui::RadioButton("负载电流切换", &sweep_type, 1)) {
+        step = 1;
+      }
+    } else if (mode == 0 && load_type == 1) {
+      if (ImGui::RadioButton("负载电压切换", &sweep_type, 1)) {
+        step = 1;
+      }
+    } else {
+      ImGui::SameLine();
+      if (ImGui::RadioButton("电源电压切换", &sweep_type, 1)) {
+        step = 1;
+      }
+    }
+    if (mode == 0 && load_type == 1) {
+      ImGui::SameLine();
+      if (ImGui::RadioButton("模式切换", &sweep_type, 2)) {
+        step = 1;
+      }
+    }
+
+    ImGui::DragInt("扫描步数 ", &step, 10, 10, 50);
+    ImGui::DragFloat("扫描步长 (s)", &step_time, 0.5, 0.5, 10.0);
+    if (ImGui::Button("扫描") && ((progress > 0.999f) || (progress < 0.001f))) {
+      std::thread th_sweep(sweep_ivp, &it8512, &psw, set_current, set_voltage,
+                           ocv, step, step_time, mode, &progress, &time_ivp,
+                           &voltage_ivp, &current_ivp, &power_ivp,
+                           &hydrogen_ivp, temperature, fuel_flow, air_flow,
+                           load_type, sweep_type);
+      th_sweep.detach();
+    }
+    // ImGui::PushStyleColor(ImGuiCol_FrameBg,
+    //                       (ImVec4)ImColor::ImColor(252, 252, 252, 256));
+    ImGui::PushStyleColor(ImGuiCol_PlotHistogram,
+                          (ImVec4)ImColor::ImColor(26, 115, 232, 256));
+    ImGui::ProgressBar(progress, ImVec2(0.0f, 0.0f));
+    ImGui::PopStyleColor();
+
     ImGui::End();
 
     ImGui::Begin("测试结果");
