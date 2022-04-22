@@ -475,6 +475,7 @@ void sweep_ivp(seriallib* it8512, visalib* psw, float set_current,
   float vcp[3];
   std::vector<float> inputs;
   if (sweep_type == 0) {
+    repeat = 1;
     for (int i = 0; i < step + 1; i++) {
       if (mode == 0) {
         // in current load switch, ocv is i_start
@@ -483,7 +484,7 @@ void sweep_ivp(seriallib* it8512, visalib* psw, float set_current,
         inputs.push_back((set_voltage - ocv) / step * i + ocv);
       }
     }
-    inputs.push_back(ocv);
+    // inputs.push_back(ocv);
   } else {
     std::vector<float> items;
     if (sweep_type == 1) {
