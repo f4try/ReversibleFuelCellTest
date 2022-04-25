@@ -276,7 +276,7 @@ static void SetupVulkanWindow(ImGui_ImplVulkanH_Window* wd,
                                       VK_PRESENT_MODE_IMMEDIATE_KHR,
                                       VK_PRESENT_MODE_FIFO_KHR};
 #else
-  VkPresentModeKHR present_modes[] = {VK_PRESENT_MODE_FIFO_KHR};
+  VkPresentModeKHR present_modes[] = {VK_PRESENT_MODE_IMMEDIATE_KHR};
 #endif
   wd->PresentMode = ImGui_ImplVulkanH_SelectPresentMode(
       g_PhysicalDevice, wd->Surface, &present_modes[0],
@@ -433,11 +433,12 @@ bool turn_on_output(seriallib* it8512, visalib* psw, int mode) {
 
 void sweep_ivp(seriallib* it8512, visalib* psw, float set_current,
                float set_voltage, float ocv, int step, float step_time,
-               int mode, float* progress, std::vector<float>* time_ivp,
+               int* mode, float* progress, std::vector<float>* time_ivp,
                std::vector<float>* voltage_ivp, std::vector<float>* current_ivp,
                std::vector<float>* power_ivp, std::vector<float>* hydrogen_ivp,
                float temperature, float fuel_flow, float air_flow,
-               int load_type, int sweep_type, int repeat) {
+               int load_type, int sweep_type, int repeat,
+               std::string* str_filename) {
   time_ivp->clear();
   voltage_ivp->clear();
   current_ivp->clear();
@@ -448,22 +449,34 @@ void sweep_ivp(seriallib* it8512, visalib* psw, float set_current,
   time_t now = std::time(0);
   tm* ltm = localtime(&now);
   char filename[80];
-  std::string str_filename;
-  if (mode == 0 && sweep_type == 0) {
-    str_filename = "outputs\\ivp-fc-%d-%d-%d-%d-%d-%d.csv";
-  } else if (mode == 1 && sweep_type == 0) {
-    str_filename = "outputs\\ivp-ec-%d-%d-%d-%d-%d-%d.csv";
-  } else if (mode == 0 && load_type == 0 && sweep_type == 1) {
-    str_filename = "outputs\\load_switch-fc-current-%d-%d-%d-%d-%d-%d.csv";
-  } else if (mode == 0 && load_type == 1 && sweep_type == 1) {
-    str_filename = "outputs\\voltage_switch-fc-%d-%d-%d-%d-%d-%d.csv";
-  } else if (mode == 1 && sweep_type == 1) {
-    str_filename = "outputs\\voltage_switch-ec-%d-%d-%d-%d-%d-%d.csv";
-  } else if (mode == 0 && load_type == 1 && sweep_type == 2) {
-    str_filename = "outputs\\voltage_mode_switch-fcec-%d-%d-%d-%d-%d-%d.csv";
+  std::string filename_format;
+  if (*mode == 0 && sweep_type == 0) {
+    filename_format = "outputs\\ivp-fc-%d-%d-%d-%d-%d-%d.csv";
+  } else if (*mode == 1 && sweep_type == 0) {
+    filename_format = "outputs\\ivp-ec-%d-%d-%d-%d-%d-%d.csv";
+  } else if (*mode == 0 && load_type == 0 && sweep_type == 1) {
+    filename_format = "outputs\\load_switch-fc-current-%d-%d-%d-%d-%d-%d.csv";
+  } else if (*mode == 0 && load_type == 1 && sweep_type == 1) {
+    filename_format = "outputs\\voltage_switch-fc-%d-%d-%d-%d-%d-%d.csv";
+  } else if (*mode == 1 && sweep_type == 1) {
+    filename_format = "outputs\\voltage_switch-ec-%d-%d-%d-%d-%d-%d.csv";
+  } else if (*mode == 0 && load_type == 1 && sweep_type == 2) {
+    filename_format = "outputs\\voltage_mode_switch-fcec-%d-%d-%d-%d-%d-%d.csv";
   }
-  sprintf(filename, str_filename.c_str(), ltm->tm_year + 1900, ltm->tm_mon + 1,
-          ltm->tm_mday, ltm->tm_hour, ltm->tm_min, ltm->tm_sec);
+  sprintf(filename, filename_format.c_str(), ltm->tm_year + 1900,
+          ltm->tm_mon + 1, ltm->tm_mday, ltm->tm_hour, ltm->tm_min,
+          ltm->tm_sec);
+  *str_filename = filename;
+
+  std::string filename_t = *str_filename;
+  filename_t.insert(filename_t.size() - 4, "_t");
+  FILE* fp_t = fopen(filename_t.c_str(), "a");
+  fputs(
+      "time,voltage,current,power,hydrogen,mode,temperature,fuel_flow,air_flow,"
+      "load_type\n",
+      fp_t);
+  fclose(fp_t);
+
   fp = fopen(filename, "a");
   fputs(
       "time,voltage,current,power,hydrogen,mode,temperature,fuel_flow,air_flow,"
@@ -477,7 +490,7 @@ void sweep_ivp(seriallib* it8512, visalib* psw, float set_current,
   if (sweep_type == 0) {
     repeat = 1;
     for (int i = 0; i < step + 1; i++) {
-      if (mode == 0) {
+      if (*mode == 0) {
         // in current load switch, ocv is i_start
         inputs.push_back((set_current - ocv) / step * i + ocv);
       } else {
@@ -489,7 +502,7 @@ void sweep_ivp(seriallib* it8512, visalib* psw, float set_current,
     std::vector<float> items;
     if (sweep_type == 1) {
       for (int i = 0; i < step + 1; i++) {
-        if (mode == 0 && load_type == 0) {
+        if (*mode == 0 && load_type == 0) {
           // in current load switch, ocv is i_start
           items.push_back((set_current - ocv) / step * i + ocv);
         } else {
@@ -520,15 +533,15 @@ void sweep_ivp(seriallib* it8512, visalib* psw, float set_current,
         if (i == 0 ||
             (i > 0 && (inputs[i - 1] - ocv) * (inputs[i] - ocv) <= 0)) {
           if (inputs[i] <= ocv) {
-            mode = 0;
+            *mode = 0;
             turn_on_output(it8512, psw, 0);
           } else {
-            mode = 1;
+            *mode = 1;
             turn_on_output(it8512, psw, 1);
           }
         }
       }
-      if (mode == 0) {
+      if (*mode == 0) {
         if (load_type == 0) {
           if (!it8512->setCurrent(inputs[i])) {
             std::cout << "设置负载电流失败!" << std::endl;
@@ -551,7 +564,7 @@ void sweep_ivp(seriallib* it8512, visalib* psw, float set_current,
       if (!it8512->readVCP(vcp)) {
         std::cout << "读取电压、电流、功率失败!" << std::endl;
       }
-      if (mode == 1) {
+      if (*mode == 1) {
         vcp[1] = psw->readCurrent();
         vcp[2] = vcp[1] * vcp[2];
       }
@@ -562,20 +575,21 @@ void sweep_ivp(seriallib* it8512, visalib* psw, float set_current,
       voltage_ivp->push_back(*vcp);
       current_ivp->push_back(*(vcp + 1));
       power_ivp->push_back(*(vcp + 2));
-      if (mode == 1) {
+      if (*mode == 1) {
         hydrogen_ivp->push_back(*(vcp + 1) / 26.801 / 2.0 * 23.8 * 20.0);
       } else {
         hydrogen_ivp->push_back(0.0f);
       }
       fprintf(fp, "%.4f,%.2f,%.3f,%.3f,%.3f,%d,%.1f,%.3f,%.3f,%d\n", last_time,
               voltage_ivp->back(), current_ivp->back(), power_ivp->back(),
-              hydrogen_ivp->back(), mode, temperature, fuel_flow, air_flow,
+              hydrogen_ivp->back(), *mode, temperature, fuel_flow, air_flow,
               load_type);
       *progress =
           1.0 / (repeat * (inputs.size() - 1)) * (n * (inputs.size() - 1) + i);
     }
   }
   fclose(fp);
+  *str_filename = "";
 }
 
 int main(int, char**) {
@@ -708,11 +722,12 @@ int main(int, char**) {
   static int load_type = 0;
   static int sweep_type = 0;
   static float progress = 0.0f;
-  static float readFreq = 10.0f;
+  static float readFreq = 25.0f;
   ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
   static bool setting_window_status = false;
+  static std::string str_filename = "";
   // inital serial
-  seriallib it8512("COM6");
+  seriallib it8512("COM5");
   if (!it8512.loadOn() || !it8512.setLoadType(0)) {
     std::cout << "打开电子负载失败!" << std::endl;
   }
@@ -794,6 +809,17 @@ int main(int, char**) {
       fprintf(fp, "%.4f,%.2f,%.3f,%.3f,%.3f,%d,%.1f,%.3f,%.3f,%d\n", last_time,
               voltage.back(), current.back(), power.back(), hydrogen.back(),
               mode, temperature, fuel_flow, air_flow, load_type);
+      std::cout << str_filename.size() << std::endl;
+      if (str_filename.size() > 4) {
+        std::string filename_t = str_filename;
+        filename_t.insert(filename_t.size() - 4, "_t");
+        FILE* fp_t = fopen(filename_t.c_str(), "a");
+        fprintf(fp_t, "%.4f,%.2f,%.3f,%.3f,%.3f,%d,%.1f,%.3f,%.3f,%d\n",
+                last_time, voltage.back(), current.back(), power.back(),
+                hydrogen.back(), mode, temperature, fuel_flow, air_flow,
+                load_type);
+        fclose(fp_t);
+      }
       if (current.size() > 1) {
         smallest_c = min(current.back() - 0.03, smallest_c);
         biggest_c = max(current.back() + 0.03, biggest_c);
@@ -879,9 +905,9 @@ int main(int, char**) {
       }
     } else {
       if (mode == 0) {
-        ImGui::Text("发电模式扫描中...");
+        ImGui::TextColored(ImVec4(0.0f, 0.0f, 0.8f, 1.0f), "发电模式扫描中...");
       } else {
-        ImGui::Text("电解模式扫描中...");
+        ImGui::TextColored(ImVec4(0.0f, 0.0f, 0.8f, 1.0f), "电解模式扫描中...");
       }
     }
 
@@ -1021,11 +1047,11 @@ int main(int, char**) {
       } else {
         ocv_input = ocv;
       }
-      std::thread th_sweep(sweep_ivp, &it8512, &psw, set_current,
-                           set_voltage_input, ocv_input, step, step_time, mode,
-                           &progress, &time_ivp, &voltage_ivp, &current_ivp,
-                           &power_ivp, &hydrogen_ivp, temperature, fuel_flow,
-                           air_flow, load_type, sweep_type, repeat);
+      std::thread th_sweep(
+          sweep_ivp, &it8512, &psw, set_current, set_voltage_input, ocv_input,
+          step, step_time, &mode, &progress, &time_ivp, &voltage_ivp,
+          &current_ivp, &power_ivp, &hydrogen_ivp, temperature, fuel_flow,
+          air_flow, load_type, sweep_type, repeat, &str_filename);
       th_sweep.detach();
     }
     // ImGui::PushStyleColor(ImGuiCol_FrameBg,
