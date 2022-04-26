@@ -167,7 +167,7 @@ bool seriallib::setCurrent(float current) {
                                    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
                                    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
                                    0x00, 0x00, 0x00, 0x00, 0x00};
-  const unsigned int current_int = unsigned int(current * 10000);
+  const unsigned int current_int = (unsigned int)(current * 10000);
   inputBuffer[3] = current_int % 256;
   inputBuffer[4] = current_int >> 8 % 256;
   inputBuffer[5] = current_int >> 16 % 256;
@@ -188,7 +188,7 @@ bool seriallib::setVoltage(float voltage) {
                                    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
                                    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
                                    0x00, 0x00, 0x00, 0x00, 0x00};
-  const unsigned int voltage_int = unsigned int(voltage * 1000);
+  const unsigned int voltage_int = (unsigned int)(voltage * 1000);
   inputBuffer[3] = voltage_int % 256;
   inputBuffer[4] = voltage_int >> 8 % 256;
   inputBuffer[5] = voltage_int >> 16 % 256;

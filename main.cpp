@@ -438,7 +438,7 @@ void sweep_ivp(seriallib* it8512, visalib* psw, float set_current,
                std::vector<float>* power_ivp, std::vector<float>* hydrogen_ivp,
                float temperature, float fuel_flow, float air_flow,
                int load_type, int sweep_type, int repeat,
-               std::string* str_filename) {
+               std::string* str_filename, bool* stop) {
   time_ivp->clear();
   voltage_ivp->clear();
   current_ivp->clear();
@@ -524,8 +524,16 @@ void sweep_ivp(seriallib* it8512, visalib* psw, float set_current,
     }
   }
   for (int n = 0; n < repeat; n++) {
+    if (*stop) {
+      *progress = 0;
+      break;
+    }
     for (int i = 0; i < inputs.size(); i++) {
       // std::cout << inputs[i] << std::endl;
+      if (*stop) {
+        *progress = 0;
+        break;
+      }
       if (n > 0 && i == 0) {
         continue;
       }
@@ -926,7 +934,7 @@ int main(int, char**) {
     ImGui::Text("FPS %.1f", ImGui::GetIO().Framerate);
     ImGui::Checkbox("设置", &setting_window_status);
     ImGui::PushStyleColor(ImGuiCol_PlotHistogram,
-                          (ImVec4)ImColor::ImColor(26, 115, 232, 256));
+                          ImVec4(0.10, 0.45, 0.91, 1.00));
     if (power.size() > 0) {
       if (mode == 0) {
         char buf[32];
@@ -959,6 +967,7 @@ int main(int, char**) {
     static int step = 20;
     static float step_time = 1.0;
     static int repeat = 1;
+    static bool stop = false;
 
     ImGui::Begin("测试参数");
     if (mode == 0) {
@@ -1035,6 +1044,7 @@ int main(int, char**) {
     ImGui::DragFloat("扫描步长 (s)", &step_time, 0.5, 0.5, 10.0);
     ImGui::DragInt("重复次数 ", &repeat, 1, 1, 20);
     if (ImGui::Button("扫描") && ((progress > 0.999f) || (progress < 0.001f))) {
+      stop = false;
       float set_voltage_input;
       float ocv_input;
       if (mode == 0) {
@@ -1051,13 +1061,18 @@ int main(int, char**) {
           sweep_ivp, &it8512, &psw, set_current, set_voltage_input, ocv_input,
           step, step_time, &mode, &progress, &time_ivp, &voltage_ivp,
           &current_ivp, &power_ivp, &hydrogen_ivp, temperature, fuel_flow,
-          air_flow, load_type, sweep_type, repeat, &str_filename);
+          air_flow, load_type, sweep_type, repeat, &str_filename, &stop);
       th_sweep.detach();
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("停止")) {
+      stop = true;
+      progress = 0.0f;
     }
     // ImGui::PushStyleColor(ImGuiCol_FrameBg,
     //                       (ImVec4)ImColor::ImColor(252, 252, 252, 256));
     ImGui::PushStyleColor(ImGuiCol_PlotHistogram,
-                          (ImVec4)ImColor::ImColor(26, 115, 232, 256));
+                          ImVec4(0.10, 0.45, 0.91, 1.00));
     ImGui::ProgressBar(progress, ImVec2(0.0f, 0.0f));
     ImGui::PopStyleColor();
 
